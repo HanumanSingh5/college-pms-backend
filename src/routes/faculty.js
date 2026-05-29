@@ -1,0 +1,187 @@
+const router  = require('express').Router();
+const jwt     = require('jsonwebtoken');
+const Project = require('../models/Project');
+const Task    = require('../models/Task');
+const User    = require('../models/User');
+
+const JWT_SECRET = 'mysecretkey123';
+
+const auth = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ msg: 'No token' });
+  try { req.user = jwt.verify(token, JWT_SECRET); next(); }
+  catch { res.status(401).json({ msg: 'Invalid token' }); }
+};
+
+// Stats
+router.get('/stats', auth, async (req, res) => {
+  try {
+    const projects   = await Project.countDocuments({ faculty: req.user.id });
+    const tasks      = await Task.countDocuments({ assignedBy: req.user.id });
+    const pending    = await Task.countDocuments({ assignedBy: req.user.id, status: 'pending' });
+    const completed  = await Task.countDocuments({ assignedBy: req.user.id, status: 'completed' });
+    const late       = await Task.countDocuments({ assignedBy: req.user.id, status: 'late' });
+    res.json({ projects, tasks, pending, completed, late });
+  } catch { res.status(500).json({ msg: 'Error' }); }
+});
+
+// Get faculty's projects
+router.get('/projects', auth, async (req, res) => {
+  try {
+    const projects = await Project.find({ faculty: req.user.id })
+      .populate('students', 'name email enrollment studentClass mobile teamMembers')
+      .sort({ createdAt: -1 });
+    res.json(projects);
+  } catch { res.status(500).json({ msg: 'Error' }); }
+});
+
+// Select and finalize definition
+router.put('/project/:id/select-definition', auth, async (req, res) => {
+  try {
+    const { selectedIndex, finalDefinition } = req.body;
+    const project = await Project.findOne({ _id: req.params.id, faculty: req.user.id });
+    if (!project) return res.status(404).json({ msg: 'Project not found' });
+
+    const def = project.definitions[selectedIndex];
+    if (!def) return res.status(400).json({ msg: 'Invalid definition index' });
+
+    project.selectedDefinition = selectedIndex;
+    project.finalDefinition    = finalDefinition || def.description;
+    project.title              = def.title    || project.title;
+    project.frontend           = def.frontend || project.frontend;
+    project.backend            = def.backend  || project.backend;
+    project.definitionStatus   = 'finalized';
+    await project.save();
+
+    res.json({ msg: 'Definition finalized!', project });
+  } catch (err) {
+    console.log('Finalize error:', err.message);
+    res.status(500).json({ msg: 'Failed to finalize' });
+  }
+});
+
+// Get all tasks
+router.get('/tasks', auth, async (req, res) => {
+  try {
+    // Auto-mark overdue tasks as late
+    const now = new Date();
+    await Task.updateMany(
+      {
+        assignedBy: req.user.id,
+        dueDate: { $lt: now },
+        status: { $in: ['pending', 'in-progress'] }
+      },
+      { $set: { status: 'late' } }
+    );
+
+    const tasks = await Task.find({ assignedBy: req.user.id })
+      .populate('assignedTo', 'name email enrollment')
+      .populate('project', 'title groupNo')
+      .populate('submissions.student', 'name email enrollment')
+      .sort({ createdAt: -1 });
+    res.json(tasks);
+  } catch { res.status(500).json({ msg: 'Error' }); }
+});
+
+// Get late submissions
+router.get('/late-submissions', auth, async (req, res) => {
+  try {
+    const now = new Date();
+
+    // Auto mark overdue
+    await Task.updateMany(
+      {
+        assignedBy: req.user.id,
+        dueDate: { $lt: now },
+        status: { $in: ['pending', 'in-progress'] }
+      },
+      { $set: { status: 'late' } }
+    );
+
+    const tasks = await Task.find({
+      assignedBy: req.user.id,
+      $or: [
+        { status: 'late' },
+        {
+          dueDate: { $lt: now },
+          status: { $in: ['pending', 'in-progress'] }
+        }
+      ]
+    })
+      .populate('assignedTo', 'name email enrollment')
+      .populate('project', 'title groupNo')
+      .sort({ dueDate: 1 });
+
+    res.json(tasks);
+  } catch { res.status(500).json({ msg: 'Error' }); }
+});
+
+// Create task
+router.post('/task', auth, async (req, res) => {
+  try {
+    const { title, description, phase, projectId, dueDate } = req.body;
+
+    if (!dueDate) {
+      return res.status(400).json({ msg: 'Due date is required for every task' });
+    }
+
+    const project = await Project.findOne({ _id: projectId, faculty: req.user.id });
+    if (!project) return res.status(404).json({ msg: 'Project not found' });
+
+    if (project.definitionStatus !== 'finalized') {
+      return res.status(400).json({ msg: 'Please finalize project definition before assigning tasks' });
+    }
+
+    const task = await Task.create({
+      title, description,
+      phase:      phase || '',
+      project:    projectId,
+      assignedTo: project.students,
+      assignedBy: req.user.id,
+      dueDate:    new Date(dueDate),
+    });
+    res.json(task);
+  } catch (err) {
+    console.log('Create task error:', err.message);
+    res.status(500).json({ msg: 'Failed to create task' });
+  }
+});
+
+// Update task
+router.put('/task/:id', auth, async (req, res) => {
+  try {
+    const { title, description, dueDate, status } = req.body;
+    const update = {};
+    if (title)       update.title       = title;
+    if (description) update.description = description;
+    if (dueDate)     update.dueDate     = new Date(dueDate);
+    if (status)      update.status      = status;
+
+    const task = await Task.findByIdAndUpdate(req.params.id, update, { new: true });
+    res.json(task);
+  } catch { res.status(500).json({ msg: 'Failed to update' }); }
+});
+
+// Delete task
+router.delete('/task/:id', auth, async (req, res) => {
+  try {
+    await Task.findByIdAndDelete(req.params.id);
+    res.json({ msg: 'Deleted' });
+  } catch { res.status(500).json({ msg: 'Failed' }); }
+});
+// Enable upload for a task (faculty)
+router.put('/task/:id/enable-upload', auth, async (req, res) => {
+  try {
+    const task = await Task.findByIdAndUpdate(
+      req.params.id,
+      { uploadEnabled: req.body.enabled },
+      { new: true }
+    );
+    res.json({
+      msg: req.body.enabled ? 'Upload enabled for students' : 'Upload disabled for students',
+      task
+    });
+  } catch { res.status(500).json({ msg: 'Failed' }); }
+});
+
+module.exports = router;
