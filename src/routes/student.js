@@ -1,11 +1,9 @@
 const router  = require('express').Router();
 const jwt     = require('jsonwebtoken');
-const path    = require('path');
-const fs      = require('fs');
-const multer  = require('multer');
 const Project = require('../models/Project');
 const Task    = require('../models/Task');
 const User    = require('../models/User');
+const { upload } = require('../utils/cloudinary');
 
 const JWT_SECRET = 'mysecretkey123';
 
@@ -15,37 +13,6 @@ const auth = (req, res, next) => {
   try { req.user = jwt.verify(token, JWT_SECRET); next(); }
   catch { res.status(401).json({ msg: 'Invalid token' }); }
 };
-
-// Multer setup
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = 'uploads/';
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir);
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + '-' + file.originalname);
-  }
-});
-const upload = multer({
-  storage,
-  fileFilter: (req, file, cb) => {
-    const allowed = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-powerpoint',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'application/zip',
-      'text/plain',
-    ];
-    if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Only PDF, Word, Excel, PPT, ZIP, TXT files allowed'));
-  },
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
-});
 
 // Get student profile
 router.get('/profile', auth, async (req, res) => {
@@ -80,13 +47,10 @@ router.get('/project', auth, async (req, res) => {
 });
 
 // Submit project definitions (up to 5)
-// Submit project definitions (up to 5)
-// Submit project definitions (up to 5)
 router.post('/submit-definitions', auth, async (req, res) => {
   try {
     const { definitions } = req.body;
 
-    // Check if student already has a finalized project
     const existingProject = await Project.findOne({
       students: req.user.id,
       definitionStatus: 'finalized'
@@ -159,25 +123,21 @@ router.put('/task/:id/status', auth, async (req, res) => {
   } catch { res.status(500).json({ msg: 'Failed to update' }); }
 });
 
-
-// Upload document for task
+// Upload document for task (uses Cloudinary)
 router.post('/task/:id/upload', auth, upload.single('document'), async (req, res) => {
   try {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ msg: 'Task not found' });
 
-    // Check if upload is enabled
     if (!task.uploadEnabled) {
       return res.status(403).json({
-        msg: 'Upload is disabled for this task. Your submission was past the due date. Contact your faculty or admin to enable upload.',
+        msg: 'Upload is disabled. Contact your faculty or admin.',
         uploadBlocked: true
       });
     }
 
-    // Check if past due date — mark as late submission
     const isLate = task.dueDate && new Date() > new Date(task.dueDate);
 
-    // Check if student already submitted
     const alreadySubmitted = task.submissions.find(
       s => s.student?.toString() === req.user.id
     );
@@ -185,9 +145,12 @@ router.post('/task/:id/upload', auth, upload.single('document'), async (req, res
       return res.status(400).json({ msg: 'You have already submitted this task.' });
     }
 
+    // Cloudinary returns full URL in req.file.path
+    const fileUrl = req.file.path || req.file.secure_url || req.file.filename;
+
     task.submissions.push({
       student:     req.user.id,
-      document:    req.file.filename,
+      document:    fileUrl,
       comment:     req.body.comment || '',
       isLate:      isLate,
       submittedAt: new Date(),
@@ -198,8 +161,7 @@ router.post('/task/:id/upload', auth, upload.single('document'), async (req, res
 
     res.json({
       msg: isLate ? 'Submitted (late)!' : 'Submitted successfully!',
-      isLate,
-      task
+      isLate, task
     });
   } catch (err) {
     console.log('Upload error:', err.message);
