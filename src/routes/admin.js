@@ -6,7 +6,9 @@ const User    = require('../models/User');
 const Project = require('../models/Project');
 const Task    = require('../models/Task');
 
-const JWT_SECRET = 'mysecretkey123';
+// Fallback to localhost if environment variable is not defined
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const JWT_SECRET = process.env.JWT_SECRET || 'mysecretkey123';
 
 const getTransporter = () => nodemailer.createTransport({
   host: 'smtp.gmail.com',
@@ -145,6 +147,8 @@ router.post('/faculty', auth, adminOnly, async (req, res) => {
       isVerified: true,
     });
 
+    const loginUrl = `${FRONTEND_URL}/login`;
+
     const emailHtml = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif">'
       + '<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 20px">'
       + '<table width="600" cellpadding="0" cellspacing="0" style="background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08)">'
@@ -160,7 +164,7 @@ router.post('/faculty', auth, adminOnly, async (req, res) => {
       + '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4ff;border:1px solid #c7d2fe;border-radius:12px;overflow:hidden">'
       + '<tr><td style="padding:18px 24px;border-bottom:1px solid #e0e7ff">'
       + '<p style="margin:0;font-size:12px;color:#6366f1;font-weight:700;text-transform:uppercase">Login URL</p>'
-      + '<p style="margin:6px 0 0;font-size:15px"><a href="http://localhost:3000/login" style="color:#4f46e5;font-weight:600">http://localhost:3000/login</a></p>'
+      + '<p style="margin:6px 0 0;font-size:15px"><a href="' + loginUrl + '" style="color:#4f46e5;font-weight:600">' + loginUrl + '</a></p>'
       + '</td></tr>'
       + '<tr><td style="padding:18px 24px;border-bottom:1px solid #e0e7ff">'
       + '<p style="margin:0;font-size:12px;color:#6366f1;font-weight:700;text-transform:uppercase">Email</p>'
@@ -171,7 +175,7 @@ router.post('/faculty', auth, adminOnly, async (req, res) => {
       + '<p style="margin:8px 0 0"><span style="font-size:20px;font-weight:700;color:#1e1b4b;background:#e0e7ff;padding:8px 20px;border-radius:8px;font-family:monospace;letter-spacing:2px">' + password + '</span></p>'
       + '</td></tr></table></td></tr>'
       + '<tr><td style="padding:16px 40px 32px">'
-      + '<a href="http://localhost:3000/login" style="display:block;background:#4f46e5;color:white;text-align:center;padding:16px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px">Login to College PMS</a>'
+      + '<a href="' + loginUrl + '" style="display:block;background:#4f46e5;color:white;text-align:center;padding:16px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px">Login to College PMS</a>'
       + '</td></tr></table></td></tr></table></body></html>';
 
     sendEmail(email, 'College PMS — Your Faculty Login Credentials', emailHtml)
@@ -224,13 +228,13 @@ router.post('/invite-student', auth, adminOnly, async (req, res) => {
 
     const existingInvite = await Invite.findOne({ email, used: false });
     if (existingInvite) {
-      const link = 'http://localhost:3000/register/' + existingInvite.token;
+      const link = `${FRONTEND_URL}/register/${existingInvite.token}`;
       return res.json({ msg: 'Invite already exists', link });
     }
 
     const token = uuidv4();
     await Invite.create({ email, role: 'student', token });
-    const link = 'http://localhost:3000/register/' + token;
+    const link = `${FRONTEND_URL}/register/${token}`;
     res.json({ msg: 'Invite created', link });
   } catch (err) {
     console.log('Invite error:', err.message);
@@ -291,13 +295,13 @@ router.post('/upload-students-excel', auth, adminOnly, uploadExcel.single('file'
 
         const existingInvite = await Invite.findOne({ email, used: false });
         if (existingInvite) {
-          results.alreadyInvited.push({ email, name, link: 'http://localhost:3000/register/' + existingInvite.token });
+          results.alreadyInvited.push({ email, name, link: `${FRONTEND_URL}/register/${existingInvite.token}` });
           continue;
         }
 
         const token = uuidv4();
         await Invite.create({ email, role: 'student', token });
-        const link = 'http://localhost:3000/register/' + token;
+        const link = `${FRONTEND_URL}/register/${token}`;
 
         let emailSent = false;
         try {
@@ -563,6 +567,7 @@ router.delete('/task/:id', auth, adminOnly, async (req, res) => {
     res.json({ msg: 'Deleted' });
   } catch { res.status(500).json({ msg: 'Failed' }); }
 });
+
 // Enable/disable upload for a task (admin)
 router.put('/task/:id/enable-upload', auth, adminOnly, async (req, res) => {
   try {
