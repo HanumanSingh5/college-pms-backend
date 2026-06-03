@@ -1,12 +1,19 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
-console.log('EMAIL_USER:', process.env.EMAIL_USER); // ← add this
-console.log('EMAIL_PASS:', process.env.EMAIL_PASS ? 'loaded' : 'NOT loaded');
-const express = require('express');
+
+const express  = require('express');
 const mongoose = require('mongoose');
-const cors = require('cors');
+const cors     = require('cors');
 
 const app = express();
-app.use(cors());
+
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'https://college-pms-frontend.vercel.app',
+  ],
+  credentials: true,
+}));
+
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
@@ -15,8 +22,10 @@ app.use('/api/admin',   require('./routes/admin'));
 app.use('/api/faculty', require('./routes/faculty'));
 app.use('/api/student', require('./routes/student'));
 
-mongoose.connect('mongodb://localhost:27017/college-pms')
+// FIXED: Use environment variable instead of hardcoded localhost
+mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.log('DB Error:', err.message));
 
-app.listen(5000, () => console.log('Server running on port 5000'));
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log('Server running on port ' + PORT));
