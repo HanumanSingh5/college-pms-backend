@@ -4,7 +4,7 @@ const Project = require('../models/Project');
 const Task    = require('../models/Task');
 const User    = require('../models/User');
 
-const JWT_SECRET = 'mysecretkey123';
+const JWT_SECRET = process.env.JWT_SECRET || 'mysecretkey123_college_pms_2024';
 
 const auth = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -63,17 +63,11 @@ router.put('/project/:id/select-definition', auth, async (req, res) => {
 // Get all tasks
 router.get('/tasks', auth, async (req, res) => {
   try {
-    // Auto-mark overdue tasks as late
     const now = new Date();
     await Task.updateMany(
-      {
-        assignedBy: req.user.id,
-        dueDate: { $lt: now },
-        status: { $in: ['pending', 'in-progress'] }
-      },
+      { assignedBy: req.user.id, dueDate: { $lt: now }, status: { $in: ['pending', 'in-progress'] } },
       { $set: { status: 'late' } }
     );
-
     const tasks = await Task.find({ assignedBy: req.user.id })
       .populate('assignedTo', 'name email enrollment')
       .populate('project', 'title groupNo')
@@ -87,31 +81,20 @@ router.get('/tasks', auth, async (req, res) => {
 router.get('/late-submissions', auth, async (req, res) => {
   try {
     const now = new Date();
-
-    // Auto mark overdue
     await Task.updateMany(
-      {
-        assignedBy: req.user.id,
-        dueDate: { $lt: now },
-        status: { $in: ['pending', 'in-progress'] }
-      },
+      { assignedBy: req.user.id, dueDate: { $lt: now }, status: { $in: ['pending', 'in-progress'] } },
       { $set: { status: 'late' } }
     );
-
     const tasks = await Task.find({
       assignedBy: req.user.id,
       $or: [
         { status: 'late' },
-        {
-          dueDate: { $lt: now },
-          status: { $in: ['pending', 'in-progress'] }
-        }
+        { dueDate: { $lt: now }, status: { $in: ['pending', 'in-progress'] } }
       ]
     })
       .populate('assignedTo', 'name email enrollment')
       .populate('project', 'title groupNo')
       .sort({ dueDate: 1 });
-
     res.json(tasks);
   } catch { res.status(500).json({ msg: 'Error' }); }
 });
@@ -120,17 +103,13 @@ router.get('/late-submissions', auth, async (req, res) => {
 router.post('/task', auth, async (req, res) => {
   try {
     const { title, description, phase, projectId, dueDate } = req.body;
-
-    if (!dueDate) {
-      return res.status(400).json({ msg: 'Due date is required for every task' });
-    }
+    if (!dueDate) return res.status(400).json({ msg: 'Due date is required for every task' });
 
     const project = await Project.findOne({ _id: projectId, faculty: req.user.id });
     if (!project) return res.status(404).json({ msg: 'Project not found' });
 
-    if (project.definitionStatus !== 'finalized') {
+    if (project.definitionStatus !== 'finalized')
       return res.status(400).json({ msg: 'Please finalize project definition before assigning tasks' });
-    }
 
     const task = await Task.create({
       title, description,
@@ -156,7 +135,6 @@ router.put('/task/:id', auth, async (req, res) => {
     if (description) update.description = description;
     if (dueDate)     update.dueDate     = new Date(dueDate);
     if (status)      update.status      = status;
-
     const task = await Task.findByIdAndUpdate(req.params.id, update, { new: true });
     res.json(task);
   } catch { res.status(500).json({ msg: 'Failed to update' }); }
@@ -169,7 +147,8 @@ router.delete('/task/:id', auth, async (req, res) => {
     res.json({ msg: 'Deleted' });
   } catch { res.status(500).json({ msg: 'Failed' }); }
 });
-// Enable upload for a task (faculty)
+
+// Enable/disable upload for a task (faculty)
 router.put('/task/:id/enable-upload', auth, async (req, res) => {
   try {
     const task = await Task.findByIdAndUpdate(

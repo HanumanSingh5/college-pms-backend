@@ -5,7 +5,7 @@ const Task    = require('../models/Task');
 const User    = require('../models/User');
 const { upload } = require('../utils/cloudinary');
 
-const JWT_SECRET = 'mysecretkey123';
+const JWT_SECRET = process.env.JWT_SECRET || 'mysecretkey123_college_pms_2024';
 
 const auth = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];

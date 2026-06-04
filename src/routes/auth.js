@@ -4,7 +4,7 @@ const jwt    = require('jsonwebtoken');
 const User   = require('../models/User');
 const Invite = require('../models/Invite');
 
-const JWT_SECRET = 'mysecretkey123';
+const JWT_SECRET = process.env.JWT_SECRET || 'mysecretkey123_college_pms_2024';
 
 // Login
 router.post('/login', async (req, res) => {
@@ -43,27 +43,21 @@ router.post('/register/:token', async (req, res) => {
     const invite = await Invite.findOne({ token: req.params.token, used: false });
     if (!invite) return res.status(400).json({ msg: 'Invalid or expired invite link' });
 
-    if (invite.role === 'faculty') {
+    if (invite.role === 'faculty')
       return res.status(403).json({ msg: 'Faculty accounts are created by admin only.' });
-    }
 
     const { name, password, enrollment, studentClass, mobile } = req.body;
 
-    // Check email duplicate
     const existingEmail = await User.findOne({ email: invite.email });
     if (existingEmail) return res.status(400).json({ msg: 'Account already exists for this email' });
 
-    // Check enrollment duplicate
     if (enrollment) {
       const existingEnrollment = await User.findOne({
         enrollment: enrollment.trim().toUpperCase(),
         role: 'student'
       });
-      if (existingEnrollment) {
-        return res.status(400).json({
-          msg: 'Enrollment number "' + enrollment + '" is already registered.'
-        });
-      }
+      if (existingEnrollment)
+        return res.status(400).json({ msg: 'Enrollment number "' + enrollment + '" is already registered.' });
     }
 
     const hashed = await bcrypt.hash(password, 10);
@@ -72,9 +66,9 @@ router.post('/register/:token', async (req, res) => {
       email:        invite.email.toLowerCase().trim(),
       password:     hashed,
       role:         'student',
-      enrollment:   enrollment   ? enrollment.trim().toUpperCase()   : '',
-      studentClass: studentClass ? studentClass.trim() : '',
-      mobile:       mobile       ? mobile.trim()       : '',
+      enrollment:   enrollment   ? enrollment.trim().toUpperCase() : '',
+      studentClass: studentClass ? studentClass.trim()             : '',
+      mobile:       mobile       ? mobile.trim()                   : '',
       isVerified:   true,
     });
 
