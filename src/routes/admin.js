@@ -11,15 +11,13 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 const JWT_SECRET = process.env.JWT_SECRET || 'mysecretkey123';
 
 const getTransporter = () => nodemailer.createTransport({
-  host: 'smtp.gmail.com',
+  host: process.env.EMAIL_HOST || 'smtp-relay.brevo.com',
   port: 587,
   secure: false,
-  requireTLS: true,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  tls: { rejectUnauthorized: false }
 });
 
 const sendEmail = async (to, subject, html) => {
