@@ -1,37 +1,12 @@
 const router  = require('express').Router();
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
 const User    = require('../models/User');
 const Project = require('../models/Project');
 const Task    = require('../models/Task');
 
-// Fallback to localhost if environment variable is not defined
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 const JWT_SECRET = process.env.JWT_SECRET || 'mysecretkey123';
-
-const getTransporter = () => nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
-
-const sendEmail = async (to, subject, html) => {
-  try {
-    const transporter = getTransporter();
-    await transporter.sendMail({
-      from: '"College PMS" <' + process.env.EMAIL_USER + '>',
-      to, subject, html,
-    });
-    console.log('Email sent to:', to);
-    return true;
-  } catch (err) {
-    console.log('Email failed:', err.message);
-    return false;
-  }
-};
 
 const auth = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -54,7 +29,6 @@ router.get('/stats', auth, adminOnly, async (req, res) => {
     const tasks     = await Task.countDocuments();
     res.json({ faculties, students, projects, tasks });
   } catch (err) {
-    console.log('Stats error:', err.message);
     res.status(500).json({ msg: 'Error' });
   }
 });
@@ -65,7 +39,6 @@ router.get('/faculties', auth, adminOnly, async (req, res) => {
     const faculties = await User.find({ role: 'faculty' }).sort({ createdAt: -1 });
     res.json(faculties);
   } catch (err) {
-    console.log('Faculties error:', err.message);
     res.status(500).json({ msg: 'Error' });
   }
 });
@@ -73,12 +46,9 @@ router.get('/faculties', auth, adminOnly, async (req, res) => {
 // Get all students
 router.get('/students', auth, adminOnly, async (req, res) => {
   try {
-    console.log('Fetching students...');
     const students = await User.find({ role: 'student' }).sort({ createdAt: -1 });
-    console.log('Students found:', students.length);
     res.json(students);
   } catch (err) {
-    console.log('Students error:', err.message);
     res.status(500).json({ msg: 'Error' });
   }
 });
@@ -106,7 +76,6 @@ router.get('/student-groups', auth, adminOnly, async (req, res) => {
 
     res.json(groups);
   } catch (err) {
-    console.log('Student groups error:', err.message);
     res.status(500).json({ msg: 'Error' });
   }
 });
@@ -120,12 +89,11 @@ router.get('/student-definitions', auth, adminOnly, async (req, res) => {
       .sort({ createdAt: -1 });
     res.json(projects);
   } catch (err) {
-    console.log('Student definitions error:', err.message);
     res.status(500).json({ msg: 'Error' });
   }
 });
 
-// CREATE faculty
+// CREATE faculty — NO email sent, credentials shown to admin only
 router.post('/faculty', auth, adminOnly, async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -143,43 +111,13 @@ router.post('/faculty', auth, adminOnly, async (req, res) => {
       isVerified: true,
     });
 
-    const loginUrl = `${FRONTEND_URL}/login`;
-
-    const emailHtml = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif">'
-      + '<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 20px">'
-      + '<table width="600" cellpadding="0" cellspacing="0" style="background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08)">'
-      + '<tr><td style="background:#4f46e5;padding:32px;text-align:center">'
-      + '<h1 style="color:white;margin:0;font-size:26px">College PMS</h1>'
-      + '<p style="color:#c7d2fe;margin:8px 0 0;font-size:14px">Project Management System</p>'
-      + '</td></tr>'
-      + '<tr><td style="padding:32px 40px 16px">'
-      + '<h2 style="margin:0 0 8px;color:#111">Welcome, ' + name + '!</h2>'
-      + '<p style="color:#555;margin:0;font-size:15px;line-height:1.7">Your faculty account has been created.</p>'
-      + '</td></tr>'
-      + '<tr><td style="padding:16px 40px">'
-      + '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4ff;border:1px solid #c7d2fe;border-radius:12px;overflow:hidden">'
-      + '<tr><td style="padding:18px 24px;border-bottom:1px solid #e0e7ff">'
-      + '<p style="margin:0;font-size:12px;color:#6366f1;font-weight:700;text-transform:uppercase">Login URL</p>'
-      + '<p style="margin:6px 0 0;font-size:15px"><a href="' + loginUrl + '" style="color:#4f46e5;font-weight:600">' + loginUrl + '</a></p>'
-      + '</td></tr>'
-      + '<tr><td style="padding:18px 24px;border-bottom:1px solid #e0e7ff">'
-      + '<p style="margin:0;font-size:12px;color:#6366f1;font-weight:700;text-transform:uppercase">Email</p>'
-      + '<p style="margin:6px 0 0;font-size:15px;font-weight:700;color:#1e1b4b">' + email + '</p>'
-      + '</td></tr>'
-      + '<tr><td style="padding:18px 24px">'
-      + '<p style="margin:0;font-size:12px;color:#6366f1;font-weight:700;text-transform:uppercase">Password</p>'
-      + '<p style="margin:8px 0 0"><span style="font-size:20px;font-weight:700;color:#1e1b4b;background:#e0e7ff;padding:8px 20px;border-radius:8px;font-family:monospace;letter-spacing:2px">' + password + '</span></p>'
-      + '</td></tr></table></td></tr>'
-      + '<tr><td style="padding:16px 40px 32px">'
-      + '<a href="' + loginUrl + '" style="display:block;background:#4f46e5;color:white;text-align:center;padding:16px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px">Login to College PMS</a>'
-      + '</td></tr></table></td></tr></table></body></html>';
-
-    sendEmail(email, 'College PMS — Your Faculty Login Credentials', emailHtml)
-      .then(sent => console.log(sent ? 'Faculty email sent' : 'Faculty email failed'));
-
-    res.json({ msg: 'Faculty created successfully!', user });
+    // Return plain password so admin can share manually
+    res.json({
+      msg: 'Faculty created successfully!',
+      user,
+      credentials: { email, password },
+    });
   } catch (err) {
-    console.log('Create faculty error:', err.message);
     res.status(500).json({ msg: 'Failed to create faculty' });
   }
 });
@@ -206,39 +144,27 @@ router.post('/student', auth, adminOnly, async (req, res) => {
     });
     res.json({ msg: 'Student created successfully!', user });
   } catch (err) {
-    console.log('Create student error:', err.message);
     res.status(500).json({ msg: 'Failed to create student' });
   }
 });
 
-// Single invite student
+// Generate a generic student registration link (no email required)
 router.post('/invite-student', auth, adminOnly, async (req, res) => {
   try {
     const { v4: uuidv4 } = require('uuid');
     const Invite = require('../models/Invite');
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ msg: 'Email is required' });
-
-    const existing = await User.findOne({ email, role: 'student' });
-    if (existing) return res.status(400).json({ msg: 'Student with this email already exists' });
-
-    const existingInvite = await Invite.findOne({ email, used: false });
-    if (existingInvite) {
-      const link = `${FRONTEND_URL}/register/${existingInvite.token}`;
-      return res.json({ msg: 'Invite already exists', link });
-    }
 
     const token = uuidv4();
-    await Invite.create({ email, role: 'student', token });
+    // Store invite without email — student will fill it themselves
+    await Invite.create({ email: '', role: 'student', token });
     const link = `${FRONTEND_URL}/register/${token}`;
-    res.json({ msg: 'Invite created', link });
+    res.json({ msg: 'Registration link created', link });
   } catch (err) {
-    console.log('Invite error:', err.message);
-    res.status(500).json({ msg: 'Failed to create invite' });
+    res.status(500).json({ msg: 'Failed to create registration link' });
   }
 });
 
-// Bulk invite students via Excel
+// Bulk invite students via Excel — generates links, NO emails sent
 const multer  = require('multer');
 const XLSX    = require('xlsx');
 const uploadExcel = multer({ storage: multer.memoryStorage() });
@@ -258,73 +184,27 @@ router.post('/upload-students-excel', auth, adminOnly, uploadExcel.single('file'
     if (rows.length === 0)
       return res.status(400).json({ msg: 'Excel file is empty' });
 
-    const results = {
-      success:           [],
-      alreadyRegistered: [],
-      alreadyInvited:    [],
-      failed:            [],
-      invalidRows:       [],
-    };
-
-    const transporter = getTransporter();
+    const results = { success: [], failed: [], invalidRows: [] };
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const email = (
-        row['Email'] || row['email'] || row['Email ID'] ||
-        row['email_id'] || row['EmailID'] || row['Mail'] || row['mail'] || ''
-      ).toString().trim().toLowerCase();
-
       const name = (
         row['Name'] || row['name'] || row['Student Name'] ||
         row['StudentName'] || row['Full Name'] || ''
       ).toString().trim();
 
-      if (!email || !email.includes('@')) {
-        results.invalidRows.push('Row ' + (i + 2) + ': Invalid email');
-        continue;
-      }
-
       try {
-        const existing = await User.findOne({ email, role: 'student' });
-        if (existing) { results.alreadyRegistered.push({ email, name: existing.name }); continue; }
-
-        const existingInvite = await Invite.findOne({ email, used: false });
-        if (existingInvite) {
-          results.alreadyInvited.push({ email, name, link: `${FRONTEND_URL}/register/${existingInvite.token}` });
-          continue;
-        }
-
         const token = uuidv4();
-        await Invite.create({ email, role: 'student', token });
+        await Invite.create({ email: '', role: 'student', token });
         const link = `${FRONTEND_URL}/register/${token}`;
-
-        let emailSent = false;
-        try {
-          await transporter.sendMail({
-            from: '"College PMS" <' + process.env.EMAIL_USER + '>',
-            to: email,
-            subject: 'College PMS — Student Registration Link',
-            html: '<h2>Hello ' + (name || 'Student') + '!</h2>'
-              + '<p>Click the link below to register on College PMS:</p>'
-              + '<a href="' + link + '" style="background:#4f46e5;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block;margin:16px 0">Register Now</a>'
-              + '<p>Or copy: ' + link + '</p>'
-              + '<p>Fill your Name, Enrollment Number, Class and set a password.</p>'
-          });
-          emailSent = true;
-        } catch (emailErr) {
-          console.log('Email failed for ' + email + ':', emailErr.message);
-        }
-
-        results.success.push({ email, name, link, emailSent });
+        results.success.push({ name: name || 'Student ' + (i + 1), link });
       } catch (err) {
-        results.failed.push({ email, error: err.message });
+        results.failed.push({ row: i + 2, error: err.message });
       }
     }
 
-    res.json({ msg: 'Excel processed', total: rows.length, results });
+    res.json({ msg: 'Links generated', total: rows.length, results });
   } catch (err) {
-    console.log('Excel upload error:', err.message);
     res.status(500).json({ msg: 'Failed to process Excel: ' + err.message });
   }
 });
@@ -418,7 +298,6 @@ router.post('/project', auth, adminOnly, async (req, res) => {
     });
     res.json(project);
   } catch (err) {
-    console.log('Create project error:', err.message);
     res.status(500).json({ msg: 'Failed to create project' });
   }
 });
@@ -463,7 +342,6 @@ router.post('/assign-group', auth, adminOnly, async (req, res) => {
     const student = await User.findById(studentId);
     if (!student) return res.status(404).json({ msg: 'Student not found' });
 
-    // Check if student is already in another finalized group
     const finalizedProject = await Project.findOne({
       students: studentId,
       definitionStatus: 'finalized'
@@ -492,7 +370,6 @@ router.post('/assign-group', auth, adminOnly, async (req, res) => {
 
     res.json({ msg: 'Group assigned to faculty!', project });
   } catch (err) {
-    console.log('Assign group error:', err.message);
     res.status(500).json({ msg: 'Failed to assign group' });
   }
 });
@@ -501,7 +378,6 @@ router.post('/assign-group', auth, adminOnly, async (req, res) => {
 router.get('/all-tasks', auth, adminOnly, async (req, res) => {
   try {
     const now = new Date();
-    // Auto mark late
     await Task.updateMany(
       { dueDate: { $lt: now }, status: { $in: ['pending','in-progress'] } },
       { $set: { status: 'late' } }
@@ -521,8 +397,7 @@ router.post('/task', auth, adminOnly, async (req, res) => {
     const { title, description, phase, projectId, dueDate } = req.body;
     if (!title || !description || !projectId || !dueDate)
       return res.status(400).json({ msg: 'All fields are required' });
-    const project = await Project.findById(projectId)
-      .populate('faculty', 'name');
+    const project = await Project.findById(projectId).populate('faculty', 'name');
     if (!project) return res.status(404).json({ msg: 'Project not found' });
     const task = await Task.create({
       title, description,
@@ -534,7 +409,6 @@ router.post('/task', auth, adminOnly, async (req, res) => {
     });
     res.json(task);
   } catch (err) {
-    console.log('Admin create task error:', err.message);
     res.status(500).json({ msg: 'Failed to create task' });
   }
 });
