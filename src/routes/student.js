@@ -124,7 +124,19 @@ router.put('/task/:id/status', auth, async (req, res) => {
 });
 
 // Upload document for task (uses Cloudinary)
-router.post('/task/:id/upload', auth, upload.single('document'), async (req, res) => {
+// Wrap multer/cloudinary upload so errors are caught with full detail (not [object Object])
+const uploadMiddleware = (req, res, next) => {
+  upload.single('document')(req, res, (err) => {
+    if (err) {
+      console.log('Cloudinary/Multer upload error:', err.message || err);
+      console.log('Full error object:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
+      return res.status(500).json({ msg: 'Upload failed: ' + (err.message || 'Cloudinary error') });
+    }
+    next();
+  });
+};
+
+router.post('/task/:id/upload', auth, uploadMiddleware, async (req, res) => {
   try {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ msg: 'Task not found' });
@@ -143,6 +155,10 @@ router.post('/task/:id/upload', auth, upload.single('document'), async (req, res
     );
     if (alreadySubmitted) {
       return res.status(400).json({ msg: 'You have already submitted this task.' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ msg: 'No file received. Please choose a file and try again.' });
     }
 
     // Cloudinary returns full URL in req.file.path
