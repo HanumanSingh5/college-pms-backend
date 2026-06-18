@@ -25,22 +25,39 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Check invite token — no email required now
+// Check invite token validity
 router.get('/invite/:token', async (req, res) => {
   try {
-    const invite = await Invite.findOne({ token: req.params.token, used: false });
-    if (!invite) return res.status(400).json({ msg: 'Invalid or expired link' });
+    const invite = await Invite.findOne({ token: req.params.token });
+    if (!invite) return res.status(400).json({ msg: 'Invalid registration link.' });
+
+    // Check expiry
+    if (invite.expiresAt && new Date() > new Date(invite.expiresAt))
+      return res.status(400).json({ msg: 'This registration link has expired. Ask admin for a new one.' });
+
+    // Check max uses
+    if (invite.usedCount >= invite.maxUses)
+      return res.status(400).json({ msg: 'This registration link has reached its maximum uses.' });
+
     res.json({ role: invite.role });
   } catch {
     res.status(500).json({ msg: 'Server error' });
   }
 });
 
-// Student self-registration via invite link — student enters their own email
+// Student self-registration — multiple students can use the same link concurrently
 router.post('/register/:token', async (req, res) => {
   try {
-    const invite = await Invite.findOne({ token: req.params.token, used: false });
-    if (!invite) return res.status(400).json({ msg: 'Invalid or expired invite link' });
+    const invite = await Invite.findOne({ token: req.params.token });
+    if (!invite) return res.status(400).json({ msg: 'Invalid registration link.' });
+
+    // Check expiry
+    if (invite.expiresAt && new Date() > new Date(invite.expiresAt))
+      return res.status(400).json({ msg: 'This registration link has expired. Ask your admin for a new one.' });
+
+    // Check max uses
+    if (invite.usedCount >= invite.maxUses)
+      return res.status(400).json({ msg: 'This registration link has reached its limit. Ask admin for a new one.' });
 
     if (invite.role === 'faculty')
       return res.status(403).json({ msg: 'Faculty accounts are created by admin only.' });
@@ -50,9 +67,12 @@ router.post('/register/:token', async (req, res) => {
     if (!email || !email.includes('@'))
       return res.status(400).json({ msg: 'Valid email is required' });
 
+    // Check email not already taken
     const existingEmail = await User.findOne({ email: email.toLowerCase().trim() });
-    if (existingEmail) return res.status(400).json({ msg: 'An account with this email already exists' });
+    if (existingEmail)
+      return res.status(400).json({ msg: 'An account with this email already exists. Try logging in.' });
 
+    // Check enrollment not already taken
     if (enrollment) {
       const existingEnrollment = await User.findOne({
         enrollment: enrollment.trim().toUpperCase(),
@@ -74,8 +94,8 @@ router.post('/register/:token', async (req, res) => {
       isVerified:   true,
     });
 
-    invite.used = true;
-    await invite.save();
+    // Increment use count — does NOT mark as used so others can still register
+    await Invite.findByIdAndUpdate(invite._id, { $inc: { usedCount: 1 } });
 
     const token = jwt.sign(
       { id: user._id, role: user.role },

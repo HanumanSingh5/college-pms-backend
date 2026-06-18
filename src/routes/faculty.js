@@ -163,4 +163,28 @@ router.put('/task/:id/enable-upload', auth, async (req, res) => {
   } catch { res.status(500).json({ msg: 'Failed' }); }
 });
 
+// Download proxy — fixes Cloudinary raw file download for faculty
+router.get('/download', auth, async (req, res) => {
+  try {
+    const fileUrl = decodeURIComponent(req.query.url || '');
+    const fileName = decodeURIComponent(req.query.name || 'document');
+
+    if (!fileUrl || !fileUrl.startsWith('http'))
+      return res.status(400).json({ msg: 'Invalid file URL' });
+
+    // Add fl_attachment to Cloudinary URL to force download with filename
+    const downloadUrl = getDownloadUrl(fileUrl, fileName);
+
+    // Proxy the file through backend so CORS is not an issue
+    const response = await axios.get(downloadUrl, { responseType: 'stream' });
+
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+    response.data.pipe(res);
+  } catch (err) {
+    console.log('Download error:', err.message);
+    res.status(500).json({ msg: 'Download failed: ' + err.message });
+  }
+});
+
 module.exports = router;

@@ -10,13 +10,33 @@ cloudinary.config({
 
 const storage = new CloudinaryStorage({
   cloudinary,
-  params: {
-    folder:         'college-pms-uploads',
-    resource_type:  'raw',
-    allowed_formats: ['pdf','doc','docx','xls','xlsx','ppt','pptx','zip','txt'],
+  params: async (req, file) => {
+    return {
+      folder:        'college-pms-uploads',
+      resource_type: 'raw',
+      public_id:     Date.now() + '_' + file.originalname.replace(/\s+/g, '_'),
+      // Generate a download URL with original filename preserved
+      use_filename:  true,
+      unique_filename: false,
+    };
   },
 });
 
 const upload = multer({ storage });
 
-module.exports = { cloudinary, upload };
+// Generate a proper download URL for Cloudinary raw files
+const getDownloadUrl = (fileUrl, originalName) => {
+  if (!fileUrl) return fileUrl;
+  try {
+    // If it's already a Cloudinary URL, add fl_attachment to force download
+    if (fileUrl.includes('cloudinary.com')) {
+      // Insert fl_attachment flag into the URL
+      return fileUrl.replace('/upload/', '/upload/fl_attachment/');
+    }
+    return fileUrl;
+  } catch {
+    return fileUrl;
+  }
+};
+
+module.exports = { cloudinary, upload, getDownloadUrl };
