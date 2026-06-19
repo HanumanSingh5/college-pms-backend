@@ -3,7 +3,7 @@ const jwt     = require('jsonwebtoken');
 const Project = require('../models/Project');
 const Task    = require('../models/Task');
 const User    = require('../models/User');
-const { upload } = require('../utils/cloudinary');
+const { upload, getSignedDownloadUrl } = require('../utils/cloudinary');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'mysecretkey123_college_pms_2024';
 
@@ -194,14 +194,18 @@ router.get('/download', async (req, res) => {
     if (!fileUrl || !fileUrl.startsWith('http'))
       return res.status(400).json({ msg: 'Invalid file URL' });
 
-    const downloadUrl = fileUrl.includes('cloudinary.com')
-      ? fileUrl.replace('/upload/', '/upload/fl_attachment/')
-      : fileUrl;
-
-    const response = await axios.get(downloadUrl, {
-      responseType: 'stream',
-      timeout: 30000,
-    });
+    let response;
+    try {
+      // Try signed private download URL first (works for authenticated/private files)
+      const signedUrl = getSignedDownloadUrl(fileUrl);
+      response = await axios.get(signedUrl, { responseType: 'stream', timeout: 30000 });
+    } catch (signedErr) {
+      // Fallback — try the direct/public URL with fl_attachment
+      const fallbackUrl = fileUrl.includes('cloudinary.com')
+        ? fileUrl.replace('/upload/', '/upload/fl_attachment/')
+        : fileUrl;
+      response = await axios.get(fallbackUrl, { responseType: 'stream', timeout: 30000 });
+    }
 
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);

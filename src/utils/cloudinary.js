@@ -12,11 +12,10 @@ const storage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => {
     return {
-      folder:        'college-pms-uploads',
-      resource_type: 'raw',
-      public_id:     Date.now() + '_' + file.originalname.replace(/\s+/g, '_'),
-      // Generate a download URL with original filename preserved
-      use_filename:  true,
+      folder:          'college-pms-uploads',
+      resource_type:   'raw',
+      public_id:       Date.now() + '_' + file.originalname.replace(/\s+/g, '_'),
+      use_filename:    true,
       unique_filename: false,
     };
   },
@@ -24,19 +23,30 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
-// Generate a proper download URL for Cloudinary raw files
-const getDownloadUrl = (fileUrl, originalName) => {
-  if (!fileUrl) return fileUrl;
+// Extract the Cloudinary public_id (including folder) from a stored URL
+const extractPublicId = (fileUrl) => {
+  // Example URL:
+  // https://res.cloudinary.com/<cloud>/raw/upload/v123456/college-pms-uploads/171234_file.pdf
+  const match = fileUrl.match(/\/upload\/(?:v\d+\/)?(.+)$/);
+  return match ? match[1] : null;
+};
+
+// Generate a signed, time-limited download URL — works even if the file is private/authenticated
+const getSignedDownloadUrl = (fileUrl) => {
   try {
-    // If it's already a Cloudinary URL, add fl_attachment to force download
-    if (fileUrl.includes('cloudinary.com')) {
-      // Insert fl_attachment flag into the URL
-      return fileUrl.replace('/upload/', '/upload/fl_attachment/');
-    }
-    return fileUrl;
-  } catch {
+    const publicId = extractPublicId(fileUrl);
+    if (!publicId) return fileUrl;
+
+    return cloudinary.utils.private_download_url(publicId, null, {
+      resource_type: 'raw',
+      type:          'upload',
+      attachment:    true,
+      expires_at:    Math.floor(Date.now() / 1000) + 60 * 10, // valid 10 minutes
+    });
+  } catch (err) {
+    console.log('Signed URL error:', err.message);
     return fileUrl;
   }
 };
 
-module.exports = { cloudinary, upload, getDownloadUrl };
+module.exports = { cloudinary, upload, getSignedDownloadUrl };
