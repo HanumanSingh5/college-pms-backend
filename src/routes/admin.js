@@ -106,12 +106,13 @@ router.post('/faculty', auth, adminOnly, async (req, res) => {
     const hashed = await bcrypt.hash(password, 10);
     const user = await User.create({
       name, email,
-      password: hashed,
-      role: 'faculty',
-      isVerified: true,
+      password:      hashed,
+      plainPassword: password,
+      role:          'faculty',
+      isVerified:    true,
     });
 
-    // Return plain password so admin can share manually
+    // Return plain password so admin can show/copy it
     res.json({
       msg: 'Faculty created successfully!',
       user,
@@ -214,7 +215,10 @@ router.put('/faculty/:id', auth, adminOnly, async (req, res) => {
   try {
     const { name, email, password } = req.body;
     const update = { name, email };
-    if (password) update.password = await bcrypt.hash(password, 10);
+    if (password) {
+      update.password      = await bcrypt.hash(password, 10);
+      update.plainPassword = password;
+    }
     const user = await User.findByIdAndUpdate(req.params.id, update, { new: true });
     res.json(user);
   } catch { res.status(500).json({ msg: 'Failed to update' }); }
@@ -231,7 +235,7 @@ router.put('/student/:id', auth, adminOnly, async (req, res) => {
   } catch { res.status(500).json({ msg: 'Failed to update' }); }
 });
 
-// UPDATE student team members
+// UPDATE student team members (admin can always edit, even if locked)
 router.put('/student/:id/team', auth, adminOnly, async (req, res) => {
   try {
     const { teamMembers } = req.body;
@@ -241,6 +245,19 @@ router.put('/student/:id/team', auth, adminOnly, async (req, res) => {
       { new: true }
     ).select('-password');
     res.json(user);
+  } catch { res.status(500).json({ msg: 'Failed' }); }
+});
+
+// Toggle team lock — admin can unlock so student can edit again, or re-lock
+router.put('/student/:id/team-lock', auth, adminOnly, async (req, res) => {
+  try {
+    const { locked } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { teamLocked: !!locked },
+      { new: true }
+    ).select('-password');
+    res.json({ msg: locked ? 'Team locked' : 'Team unlocked — student can edit again', user });
   } catch { res.status(500).json({ msg: 'Failed' }); }
 });
 
