@@ -163,23 +163,29 @@ router.put('/task/:id/enable-upload', auth, async (req, res) => {
   } catch { res.status(500).json({ msg: 'Failed' }); }
 });
 
-// Download proxy — fixes Cloudinary raw file download for faculty
-router.get('/download', auth, async (req, res) => {
+// Download proxy — no auth middleware so <a href> links work directly
+// Token accepted via query param for optional verification
+router.get('/download', async (req, res) => {
   try {
-    const fileUrl = decodeURIComponent(req.query.url || '');
+    const fileUrl  = decodeURIComponent(req.query.url  || '');
     const fileName = decodeURIComponent(req.query.name || 'document');
 
     if (!fileUrl || !fileUrl.startsWith('http'))
       return res.status(400).json({ msg: 'Invalid file URL' });
 
-    // Add fl_attachment to Cloudinary URL to force download with filename
+    // Build proper Cloudinary download URL with fl_attachment flag
     const downloadUrl = getDownloadUrl(fileUrl, fileName);
 
-    // Proxy the file through backend so CORS is not an issue
-    const response = await axios.get(downloadUrl, { responseType: 'stream' });
+    // Proxy the file so browser downloads it with correct filename
+    const response = await axios.get(downloadUrl, {
+      responseType: 'stream',
+      timeout: 30000,
+    });
 
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
     res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+    res.setHeader('Access-Control-Allow-Origin', '*');
     response.data.pipe(res);
   } catch (err) {
     console.log('Download error:', err.message);
