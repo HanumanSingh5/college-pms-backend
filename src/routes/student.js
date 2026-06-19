@@ -124,19 +124,7 @@ router.put('/task/:id/status', auth, async (req, res) => {
 });
 
 // Upload document for task (uses Cloudinary)
-// Wrap multer/cloudinary upload so errors are caught with full detail (not [object Object])
-const uploadMiddleware = (req, res, next) => {
-  upload.single('document')(req, res, (err) => {
-    if (err) {
-      console.log('Cloudinary/Multer upload error:', err.message || err);
-      console.log('Full error object:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
-      return res.status(500).json({ msg: 'Upload failed: ' + (err.message || 'Cloudinary error') });
-    }
-    next();
-  });
-};
-
-router.post('/task/:id/upload', auth, uploadMiddleware, async (req, res) => {
+router.post('/task/:id/upload', auth, upload.single('document'), async (req, res) => {
   try {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ msg: 'Task not found' });
@@ -155,10 +143,6 @@ router.post('/task/:id/upload', auth, uploadMiddleware, async (req, res) => {
     );
     if (alreadySubmitted) {
       return res.status(400).json({ msg: 'You have already submitted this task.' });
-    }
-
-    if (!req.file) {
-      return res.status(400).json({ msg: 'No file received. Please choose a file and try again.' });
     }
 
     // Cloudinary returns full URL in req.file.path
@@ -199,6 +183,35 @@ router.get('/stats', auth, async (req, res) => {
       tasks, pending, completed,
     });
   } catch { res.status(500).json({ msg: 'Error' }); }
+});
+
+// Download proxy for students — view/download their own submitted documents
+router.get('/download', async (req, res) => {
+  try {
+    const fileUrl  = decodeURIComponent(req.query.url  || '');
+    const fileName = decodeURIComponent(req.query.name || 'document');
+
+    if (!fileUrl || !fileUrl.startsWith('http'))
+      return res.status(400).json({ msg: 'Invalid file URL' });
+
+    const downloadUrl = fileUrl.includes('cloudinary.com')
+      ? fileUrl.replace('/upload/', '/upload/fl_attachment/')
+      : fileUrl;
+
+    const response = await axios.get(downloadUrl, {
+      responseType: 'stream',
+      timeout: 30000,
+    });
+
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    response.data.pipe(res);
+  } catch (err) {
+    console.log('Download error:', err.message);
+    res.status(500).json({ msg: 'Download failed: ' + err.message });
+  }
 });
 
 module.exports = router;

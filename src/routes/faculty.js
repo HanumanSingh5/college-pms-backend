@@ -1,5 +1,6 @@
 const router  = require('express').Router();
 const jwt     = require('jsonwebtoken');
+const axios   = require('axios');
 const Project = require('../models/Project');
 const Task    = require('../models/Task');
 const User    = require('../models/User');
@@ -173,8 +174,10 @@ router.get('/download', async (req, res) => {
     if (!fileUrl || !fileUrl.startsWith('http'))
       return res.status(400).json({ msg: 'Invalid file URL' });
 
-    // Build proper Cloudinary download URL with fl_attachment flag
-    const downloadUrl = getDownloadUrl(fileUrl, fileName);
+    // Build proper Cloudinary download URL with fl_attachment flag (force download)
+    const downloadUrl = fileUrl.includes('cloudinary.com')
+      ? fileUrl.replace('/upload/', '/upload/fl_attachment/')
+      : fileUrl;
 
     // Proxy the file so browser downloads it with correct filename
     const response = await axios.get(downloadUrl, {
