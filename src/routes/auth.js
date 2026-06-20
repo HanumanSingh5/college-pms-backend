@@ -64,8 +64,18 @@ router.post('/register/:token', async (req, res) => {
 
     const { name, email, password, enrollment, studentClass, mobile } = req.body;
 
-    if (!email || !email.includes('@'))
-      return res.status(400).json({ msg: 'Valid email is required' });
+    const isValidEmail = (e) => /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(e);
+    const isValidEnrollment = (en) => /^\d{1,14}$/.test(en);
+
+    if (!email || !isValidEmail(email))
+      return res.status(400).json({ msg: 'Enter a valid, real email address' });
+
+    if (!enrollment || !enrollment.trim())
+      return res.status(400).json({ msg: 'Enrollment number is required' });
+
+    const enrollmentDigits = enrollment.trim().replace(/\D/g, '');
+    if (!isValidEnrollment(enrollmentDigits))
+      return res.status(400).json({ msg: 'Enrollment number must contain only digits (max 14 numbers)' });
 
     // Check email not already taken
     const existingEmail = await User.findOne({ email: email.toLowerCase().trim() });
@@ -73,14 +83,12 @@ router.post('/register/:token', async (req, res) => {
       return res.status(400).json({ msg: 'An account with this email already exists. Try logging in.' });
 
     // Check enrollment not already taken
-    if (enrollment) {
-      const existingEnrollment = await User.findOne({
-        enrollment: enrollment.trim().toUpperCase(),
-        role: 'student'
-      });
-      if (existingEnrollment)
-        return res.status(400).json({ msg: 'Enrollment number "' + enrollment + '" is already registered.' });
-    }
+    const existingEnrollment = await User.findOne({
+      enrollment: enrollmentDigits,
+      role: 'student'
+    });
+    if (existingEnrollment)
+      return res.status(400).json({ msg: 'Enrollment number "' + enrollmentDigits + '" is already registered.' });
 
     const hashed = await bcrypt.hash(password, 10);
     const user = await User.create({
@@ -88,7 +96,7 @@ router.post('/register/:token', async (req, res) => {
       email:        email.toLowerCase().trim(),
       password:     hashed,
       role:         'student',
-      enrollment:   enrollment   ? enrollment.trim().toUpperCase() : '',
+      enrollment:   enrollmentDigits,
       studentClass: studentClass ? studentClass.trim()             : '',
       mobile:       mobile       ? mobile.trim()                   : '',
       isVerified:   true,
