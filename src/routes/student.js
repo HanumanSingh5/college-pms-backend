@@ -40,7 +40,7 @@ router.put('/profile', auth, async (req, res) => {
 
     const isValidEmail  = (email)  => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     const isValidMobile = (mobile) => /^[6-9]\d{9}$/.test(mobile);
-    const isValidEnrollment = (enrollment) => /^\d{1,14}$/.test(enrollment);
+    const isValidEnrollment = (enrollment) => /^\d{14}$/.test(enrollment);
 
     if (teamMembers && teamMembers.length > 0 && !currentUser.teamLocked) {
       const seenEmails      = new Set();
@@ -61,7 +61,7 @@ router.put('/profile', auth, async (req, res) => {
         if (!name_)        return res.status(400).json({ msg: `Member ${num}: Full name is required` });
         if (!enrollment_)  return res.status(400).json({ msg: `Member ${num}: Enrollment number is required` });
         if (!isValidEnrollment(enrollment_))
-          return res.status(400).json({ msg: `Member ${num}: Enrollment number must contain only digits (max 14 numbers)` });
+          return res.status(400).json({ msg: `Member ${num}: Enrollment number must be exactly 14 digits` });
         if (!email_)       return res.status(400).json({ msg: `Member ${num}: Email is required` });
         if (!isValidEmail(email_))
           return res.status(400).json({ msg: `Member ${num}: Enter a valid email address` });

@@ -65,11 +65,11 @@ router.post('/register/:token', async (req, res) => {
     const { name, email, password, enrollment, studentClass, mobile } = req.body;
 
     const isValidEmail = (e) => /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(e);
-    const isValidEnrollment = (en) => /^\d{1,14}$/.test(en);
+    const isValidEnrollment = (en) => /^\d{14}$/.test(en);
     const isStrongPassword = (p) =>
       p && p.length >= 8 &&
       /[A-Z]/.test(p) && /[a-z]/.test(p) &&
-      /[0-9]/.test(p) && /[!@#$%^&*()_+\-={};':|,.<>?]/.test(p);
+      /[0-9]/.test(p) && /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(p);
 
     if (!email || !isValidEmail(email))
       return res.status(400).json({ msg: 'Enter a valid, real email address' });
@@ -82,7 +82,7 @@ router.post('/register/:token', async (req, res) => {
 
     const enrollmentDigits = enrollment.trim().replace(/\D/g, '');
     if (!isValidEnrollment(enrollmentDigits))
-      return res.status(400).json({ msg: 'Enrollment number must contain only digits (max 14 numbers)' });
+      return res.status(400).json({ msg: 'Enrollment number must be exactly 14 digits' });
 
     // Check email not already taken
     const existingEmail = await User.findOne({ email: email.toLowerCase().trim() });
