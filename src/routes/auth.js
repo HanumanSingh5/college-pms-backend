@@ -69,7 +69,7 @@ router.post('/register/:token', async (req, res) => {
     const isStrongPassword = (p) =>
       p && p.length >= 8 &&
       /[A-Z]/.test(p) && /[a-z]/.test(p) &&
-      /[0-9]/.test(p) && /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(p);
+      /[0-9]/.test(p) && /[!@#$%^&*()_+\-={};':|,.<>?]/.test(p);
 
     if (!email || !isValidEmail(email))
       return res.status(400).json({ msg: 'Enter a valid, real email address' });
