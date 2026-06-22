@@ -66,9 +66,16 @@ router.post('/register/:token', async (req, res) => {
 
     const isValidEmail = (e) => /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(e);
     const isValidEnrollment = (en) => /^\d{1,14}$/.test(en);
+    const isStrongPassword = (p) =>
+      p && p.length >= 8 &&
+      /[A-Z]/.test(p) && /[a-z]/.test(p) &&
+      /[0-9]/.test(p) && /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(p);
 
     if (!email || !isValidEmail(email))
       return res.status(400).json({ msg: 'Enter a valid, real email address' });
+
+    if (!password || !isStrongPassword(password))
+      return res.status(400).json({ msg: 'Password must be at least 8 characters with uppercase, lowercase, number and special character (!@#$ etc.)' });
 
     if (!enrollment || !enrollment.trim())
       return res.status(400).json({ msg: 'Enrollment number is required' });
