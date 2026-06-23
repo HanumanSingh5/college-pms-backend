@@ -285,11 +285,14 @@ router.get('/stats', auth, async (req, res) => {
   } catch { res.status(500).json({ msg: 'Error' }); }
 });
 
-// Download proxy for students — view/download their own submitted documents
+// Download / preview proxy for students — view or download their own submitted documents.
+// Pass ?inline=1 to display the file in-browser (used by the Preview modal);
+// omit it (or pass ?inline=0) to force a file download.
 router.get('/download', async (req, res) => {
   try {
     const fileUrl  = decodeURIComponent(req.query.url  || '');
     const fileName = decodeURIComponent(req.query.name || 'document');
+    const inline    = req.query.inline === '1';
 
     if (!fileUrl || !fileUrl.startsWith('http'))
       return res.status(400).json({ msg: 'Invalid file URL' });
@@ -308,8 +311,8 @@ router.get('/download', async (req, res) => {
     }
 
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
-    res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${safeName}"`);
+    res.setHeader('Content-Type', response.headers['content-type'] || 'application/pdf');
     res.setHeader('Access-Control-Allow-Origin', '*');
     response.data.pipe(res);
   } catch (err) {
