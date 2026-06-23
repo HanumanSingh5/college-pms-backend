@@ -13,9 +13,12 @@ const taskSchema = new mongoose.Schema({
   submissions: [{
     student:         { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     document:        { type: String },
-    comment:         { type: String },   // student's comment on submission
-    facultyFeedback: { type: String, default: '' }, // faculty feedback to student
+    fileUrl:         { type: String },
+    comment:         { type: String },
+    facultyFeedback: { type: String, default: '' },
+    facultyRemark:   { type: String, default: '' },   // ← FIXED: added missing field
     feedbackAt:      { type: Date },
+    remarkAt:        { type: Date },
     submittedAt:     { type: Date, default: Date.now },
     isLate:          { type: Boolean, default: false },
   }],
