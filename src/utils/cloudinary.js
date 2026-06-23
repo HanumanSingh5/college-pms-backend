@@ -31,8 +31,10 @@ const extractPublicId = (fileUrl) => {
   return match ? match[1] : null;
 };
 
-// Generate a signed, time-limited download URL — works even if the file is private/authenticated
-const getSignedDownloadUrl = (fileUrl) => {
+// Generate a signed, time-limited download URL — works even if the file is private/authenticated.
+// Pass inline=true to get a URL that displays in-browser (used for the Preview modal);
+// the default (inline=false) forces a file download, as before.
+const getSignedDownloadUrl = (fileUrl, inline = false) => {
   try {
     const publicId = extractPublicId(fileUrl);
     if (!publicId) return fileUrl;
@@ -40,7 +42,7 @@ const getSignedDownloadUrl = (fileUrl) => {
     return cloudinary.utils.private_download_url(publicId, null, {
       resource_type: 'raw',
       type:          'upload',
-      attachment:    true,
+      attachment:    !inline,
       expires_at:    Math.floor(Date.now() / 1000) + 60 * 10, // valid 10 minutes
     });
   } catch (err) {

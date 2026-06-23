@@ -300,11 +300,11 @@ router.get('/download', async (req, res) => {
     let response;
     try {
       // Try signed private download URL first (works for authenticated/private files)
-      const signedUrl = getSignedDownloadUrl(fileUrl);
+      const signedUrl = getSignedDownloadUrl(fileUrl, inline);
       response = await axios.get(signedUrl, { responseType: 'stream', timeout: 30000 });
     } catch (signedErr) {
       // Fallback — try the direct/public URL with fl_attachment
-      const fallbackUrl = fileUrl.includes('cloudinary.com')
+      const fallbackUrl = fileUrl.includes('cloudinary.com') && !inline
         ? fileUrl.replace('/upload/', '/upload/fl_attachment/')
         : fileUrl;
       response = await axios.get(fallbackUrl, { responseType: 'stream', timeout: 30000 });
