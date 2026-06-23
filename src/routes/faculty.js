@@ -1,10 +1,9 @@
 const router  = require('express').Router();
 const jwt     = require('jsonwebtoken');
-const axios   = require('axios');
-const { getSignedDownloadUrl } = require('../utils/cloudinary');
 const Project = require('../models/Project');
 const Task    = require('../models/Task');
 const User    = require('../models/User');
+const { detectCategory } = require('../utils/categorize');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'mysecretkey123_college_pms_2024';
 
@@ -53,6 +52,10 @@ router.put('/project/:id/select-definition', auth, async (req, res) => {
     project.frontend           = def.frontend || project.frontend;
     project.backend            = def.backend  || project.backend;
     project.definitionStatus   = 'finalized';
+
+    // Auto-detect category from the finalized title + definition text
+    project.category = detectCategory(project.title, project.finalDefinition);
+
     await project.save();
 
     res.json({ msg: 'Definition finalized!', project });
@@ -165,37 +168,49 @@ router.put('/task/:id/enable-upload', auth, async (req, res) => {
   } catch { res.status(500).json({ msg: 'Failed' }); }
 });
 
-// Download proxy — no auth middleware so <a href> links work directly
-// Token accepted via query param for optional verification
-router.get('/download', async (req, res) => {
+// Add/update faculty remark on a specific submission
+router.put('/task/:taskId/remark/:submissionIndex', auth, async (req, res) => {
   try {
-    const fileUrl  = decodeURIComponent(req.query.url  || '');
-    const fileName = decodeURIComponent(req.query.name || 'document');
+    const { remark } = req.body;
+    const task = await Task.findById(req.params.taskId);
+    if (!task) return res.status(404).json({ msg: 'Task not found' });
 
-    if (!fileUrl || !fileUrl.startsWith('http'))
-      return res.status(400).json({ msg: 'Invalid file URL' });
+    const idx = parseInt(req.params.submissionIndex);
+    if (idx < 0 || idx >= task.submissions.length)
+      return res.status(400).json({ msg: 'Invalid submission index' });
 
-    let response;
-    try {
-      // Try signed private download URL first (works for authenticated/private files)
-      const signedUrl = getSignedDownloadUrl(fileUrl);
-      response = await axios.get(signedUrl, { responseType: 'stream', timeout: 30000 });
-    } catch (signedErr) {
-      // Fallback — try the direct/public URL with fl_attachment
-      const fallbackUrl = fileUrl.includes('cloudinary.com')
-        ? fileUrl.replace('/upload/', '/upload/fl_attachment/')
-        : fileUrl;
-      response = await axios.get(fallbackUrl, { responseType: 'stream', timeout: 30000 });
-    }
+    task.submissions[idx].facultyRemark = remark || '';
+    task.submissions[idx].remarkAt      = remark ? new Date() : null;
+    await task.save();
 
-    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
-    res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    response.data.pipe(res);
+    res.json({ msg: 'Remark saved', submission: task.submissions[idx] });
   } catch (err) {
-    console.log('Download error:', err.message);
-    res.status(500).json({ msg: 'Download failed: ' + err.message });
+    res.status(500).json({ msg: 'Failed to save remark: ' + err.message });
+  }
+});
+
+// Faculty sends feedback on a specific student submission
+router.put('/task/:taskId/submission/:studentId/feedback', auth, async (req, res) => {
+  try {
+    const { feedback } = req.body;
+    if (!feedback || !feedback.trim())
+      return res.status(400).json({ msg: 'Feedback message is required' });
+
+    const task = await Task.findById(req.params.taskId);
+    if (!task) return res.status(404).json({ msg: 'Task not found' });
+
+    const sub = task.submissions.find(
+      s => s.student?.toString() === req.params.studentId
+    );
+    if (!sub) return res.status(404).json({ msg: 'Submission not found' });
+
+    sub.facultyFeedback = feedback.trim();
+    sub.feedbackAt = new Date();
+    await task.save();
+
+    res.json({ msg: 'Feedback sent successfully!', feedback: sub.facultyFeedback });
+  } catch (err) {
+    res.status(500).json({ msg: 'Failed to send feedback: ' + err.message });
   }
 });
 

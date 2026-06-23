@@ -9,13 +9,15 @@ const taskSchema = new mongoose.Schema({
   assignedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   status:      { type: String, enum: ['pending','in-progress','completed','late'], default: 'pending' },
   dueDate:     { type: Date },
-  uploadEnabled: { type: Boolean, default: true },  // ← NEW
+  uploadEnabled: { type: Boolean, default: true },
   submissions: [{
-    student:     { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    document:    { type: String },
-    comment:     { type: String },
-    submittedAt: { type: Date, default: Date.now },
-    isLate:      { type: Boolean, default: false },
+    student:         { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    document:        { type: String },
+    comment:         { type: String },   // student's comment on submission
+    facultyFeedback: { type: String, default: '' }, // faculty feedback to student
+    feedbackAt:      { type: Date },
+    submittedAt:     { type: Date, default: Date.now },
+    isLate:          { type: Boolean, default: false },
   }],
 }, { timestamps: true });
 
