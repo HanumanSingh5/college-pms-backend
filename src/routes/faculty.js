@@ -1,5 +1,6 @@
 const router  = require('express').Router();
 const jwt     = require('jsonwebtoken');
+const axios   = require('axios');
 const Project = require('../models/Project');
 const Task    = require('../models/Task');
 const User    = require('../models/User');
@@ -182,6 +183,51 @@ router.put('/task/:taskId/remark/:submissionIndex', auth, async (req, res) => {
     res.json({ msg: 'Remark saved', submission: task.submissions[idx] });
   } catch (err) {
     res.status(500).json({ msg: 'Failed to save remark: ' + err.message });
+  }
+});
+
+// Download/Preview proxy — no auth needed so <a href> links work directly
+router.get('/download', async (req, res) => {
+  try {
+    const fileUrl  = decodeURIComponent(req.query.url  || '');
+    const fileName = decodeURIComponent(req.query.name || 'document');
+    const isPreview = req.query.preview === '1';
+
+    // Fix Cloudinary URL type
+    const fixedUrl = fileUrl.replace('/image/upload/', '/raw/upload/');
+
+    if (!fixedUrl || !fixedUrl.startsWith('http'))
+      return res.status(400).json({ msg: 'Invalid file URL' });
+
+    let response;
+    try {
+      // Try signed URL first
+      const match = fixedUrl.match(/\/upload\/(?:v\d+\/)?(.+)$/);
+      if (match) {
+        const publicId = match[1];
+        const signedUrl = require('cloudinary').v2.utils.private_download_url(publicId, null, {
+          resource_type: 'raw', type: 'upload', attachment: !isPreview,
+          expires_at: Math.floor(Date.now() / 1000) + 600,
+        });
+        response = await axios.get(signedUrl, { responseType: 'stream', timeout: 30000 });
+      } else {
+        throw new Error('Could not extract public_id');
+      }
+    } catch {
+      // Fallback — direct URL
+      const fallbackUrl = fixedUrl.includes('cloudinary.com')
+        ? fixedUrl.replace('/upload/', isPreview ? '/upload/' : '/upload/fl_attachment/')
+        : fixedUrl;
+      response = await axios.get(fallbackUrl, { responseType: 'stream', timeout: 30000 });
+    }
+
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    res.setHeader('Content-Disposition', `${isPreview ? 'inline' : 'attachment'}; filename="${safeName}"`);
+    res.setHeader('Content-Type', response.headers['content-type'] || 'application/pdf');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    response.data.pipe(res);
+  } catch (err) {
+    res.status(500).json({ msg: 'Download failed: ' + err.message });
   }
 });
 
