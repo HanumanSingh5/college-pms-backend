@@ -4,6 +4,7 @@ const axios   = require('axios');
 const Project = require('../models/Project');
 const Task    = require('../models/Task');
 const User    = require('../models/User');
+const { detectCategory } = require('../utils/categorize');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'mysecretkey123_college_pms_2024';
 
