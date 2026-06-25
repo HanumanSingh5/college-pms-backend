@@ -262,30 +262,65 @@ router.put('/student/:id/team-lock', auth, adminOnly, async (req, res) => {
 });
 
 // DELETE faculty
+// Cascading cleanup: unassign (not delete) any projects this faculty was guiding,
+// since those projects/students/tasks should NOT disappear just because the faculty is removed.
 router.delete('/faculty/:id', auth, adminOnly, async (req, res) => {
   try {
+    await Project.updateMany(
+      { faculty: req.params.id },
+      { $set: { faculty: null } }
+    );
     await User.findByIdAndDelete(req.params.id);
     res.json({ msg: 'Deleted' });
   } catch { res.status(500).json({ msg: 'Failed' }); }
 });
 
-// DELETE student
+// Shared helper: fully removes a student and everything that belongs only to them —
+// their Project(s) (since each student/team-leader owns exactly one Project),
+// every Task under those Projects (which also removes that task from other
+// students assigned to the same project, since the whole task record is project-scoped),
+// and finally the User document itself.
+const cascadeDeleteStudent = async (studentId) => {
+  const projects = await Project.find({ students: studentId });
+  const projectIds = projects.map(p => p._id);
+
+  if (projectIds.length > 0) {
+    await Task.deleteMany({ project: { $in: projectIds } });
+    await Project.deleteMany({ _id: { $in: projectIds } });
+  }
+
+  await User.findByIdAndDelete(studentId);
+};
+
+// DELETE student — cascades to their project, team members, and all related tasks
 router.delete('/student/:id', auth, adminOnly, async (req, res) => {
   try {
-    await User.findByIdAndDelete(req.params.id);
-    res.json({ msg: 'Deleted' });
-  } catch { res.status(500).json({ msg: 'Failed' }); }
+    const student = await User.findById(req.params.id);
+    if (!student) return res.status(404).json({ msg: 'Student not found' });
+
+    await cascadeDeleteStudent(req.params.id);
+    res.json({ msg: 'Student and all related project/group/task data deleted' });
+  } catch (err) {
+    res.status(500).json({ msg: 'Failed to delete: ' + err.message });
+  }
 });
 
-// DELETE student by email (also deletes invite)
+// DELETE student by email (also deletes invite) — same cascading cleanup as above
 router.delete('/invite/:email', auth, adminOnly, async (req, res) => {
   try {
     const Invite = require('../models/Invite');
     const email = decodeURIComponent(req.params.email);
-    await User.deleteMany({ email, role: 'student' });
+
+    const students = await User.find({ email, role: 'student' });
+    for (const s of students) {
+      await cascadeDeleteStudent(s._id);
+    }
+
     await Invite.deleteMany({ email });
-    res.json({ msg: 'Student and invite deleted' });
-  } catch { res.status(500).json({ msg: 'Failed' }); }
+    res.json({ msg: 'Student and all related project/group/task data deleted, invite removed' });
+  } catch (err) {
+    res.status(500).json({ msg: 'Failed: ' + err.message });
+  }
 });
 
 // GET all projects
@@ -341,9 +376,11 @@ router.put('/project/:id', auth, adminOnly, async (req, res) => {
   } catch { res.status(500).json({ msg: 'Failed to update' }); }
 });
 
-// DELETE project
+// DELETE project — also removes its tasks, since tasks cannot meaningfully exist
+// without the project they belong to (matches the cascade used when a student is deleted).
 router.delete('/project/:id', auth, adminOnly, async (req, res) => {
   try {
+    await Task.deleteMany({ project: req.params.id });
     await Project.findByIdAndDelete(req.params.id);
     res.json({ msg: 'Deleted' });
   } catch { res.status(500).json({ msg: 'Failed' }); }
