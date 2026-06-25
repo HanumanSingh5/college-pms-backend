@@ -4,7 +4,7 @@ const axios   = require('axios');
 const Project = require('../models/Project');
 const Task    = require('../models/Task');
 const User    = require('../models/User');
-const { upload, getSignedDownloadUrl } = require('../utils/cloudinary');
+const { upload, getSignedDownloadUrl, fixCloudinaryUrl } = require('../utils/cloudinary');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'mysecretkey123_college_pms_2024';
 
@@ -237,7 +237,7 @@ router.post('/task/:id/upload', auth, upload.single('document'), async (req, res
     }
 
     const isLate = task.dueDate && new Date() > new Date(task.dueDate);
-    const fileUrl = req.file.path || req.file.secure_url || req.file.filename;
+    const fileUrl = fixCloudinaryUrl(req.file.path || req.file.secure_url || req.file.filename);
 
     const existingIdx = task.submissions.findIndex(
       s => s.student?.toString() === req.user.id
@@ -306,19 +306,20 @@ router.get('/download', async (req, res) => {
     const fileUrl  = decodeURIComponent(req.query.url  || '');
     const fileName = decodeURIComponent(req.query.name || 'document');
 
-    if (!fileUrl || !fileUrl.startsWith('http'))
+    const fixedUrl = fixCloudinaryUrl(fileUrl);
+    if (!fixedUrl || !fixedUrl.startsWith('http'))
       return res.status(400).json({ msg: 'Invalid file URL' });
 
     let response;
     try {
       // Try signed private download URL first (works for authenticated/private files)
-      const signedUrl = getSignedDownloadUrl(fileUrl);
+      const signedUrl = getSignedDownloadUrl(fixedUrl);
       response = await axios.get(signedUrl, { responseType: 'stream', timeout: 30000 });
     } catch (signedErr) {
       // Fallback — try the direct/public URL with fl_attachment
-      const fallbackUrl = fileUrl.includes('cloudinary.com')
-        ? fileUrl.replace('/upload/', '/upload/fl_attachment/')
-        : fileUrl;
+      const fallbackUrl = fixedUrl.includes('cloudinary.com')
+        ? fixedUrl.replace('/upload/', '/upload/fl_attachment/')
+        : fixedUrl;
       response = await axios.get(fallbackUrl, { responseType: 'stream', timeout: 30000 });
     }
 
