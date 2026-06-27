@@ -284,6 +284,29 @@ router.post('/task/:id/upload', auth, upload.single('document'), async (req, res
   }
 });
 
+// Get attendance for the logged-in student
+router.get('/attendance', auth, async (req, res) => {
+  try {
+    const project = await Project.findOne({ students: req.user.id })
+      .populate('faculty', 'name');
+
+    if (!project) return res.json({ attendance: [] });
+
+    const attendance = (project.attendance || [])
+      .filter(item => item.student?.toString() === req.user.id)
+      .map(item => ({
+        date: item.date,
+        status: item.status,
+        markedAt: item.markedAt,
+      }))
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    res.json({ project, attendance });
+  } catch (err) {
+    res.status(500).json({ msg: 'Failed to load attendance: ' + err.message });
+  }
+});
+
 // Stats
 router.get('/stats', auth, async (req, res) => {
   try {

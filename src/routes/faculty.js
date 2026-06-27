@@ -37,6 +37,133 @@ router.get('/projects', auth, async (req, res) => {
   } catch { res.status(500).json({ msg: 'Error' }); }
 });
 
+// Attendance routes
+
+router.get('/attendance', auth, async (req, res) => {
+  try {
+    const { projectId, date } = req.query;
+    if (!projectId) return res.status(400).json({ msg: 'projectId is required' });
+
+    const project = await Project.findById(projectId)
+      .populate('students', 'name enrollment email');
+
+    if (!project) return res.status(404).json({ msg: `Project not found: ${projectId}` });
+    if (project.faculty?.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ msg: 'You do not have access to this project attendance' });
+    }
+
+    const filtered = (project.attendance || []).filter(item => !date || item.date === date);
+    const attendance = {};
+    filtered.forEach(item => {
+      attendance[item.student?.toString()] = item.status;
+    });
+
+    res.json({ project, attendance, date: date || null });
+  } catch (err) {
+    console.error('GET attendance error:', err);
+    res.status(500).json({ msg: 'Failed to load attendance: ' + err.message });
+  }
+});
+
+router.get('/attendance/:projectId', auth, async (req, res) => {
+  try {
+    const { date } = req.query;
+    const project = await Project.findById(req.params.projectId)
+      .populate('students', 'name enrollment email');
+
+    if (!project) return res.status(404).json({ msg: `Project not found: ${req.params.projectId}` });
+    if (project.faculty?.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ msg: 'You do not have access to this project attendance' });
+    }
+
+    const filtered = (project.attendance || []).filter(item => !date || item.date === date);
+    const attendance = {};
+    filtered.forEach(item => {
+      attendance[item.student?.toString()] = item.status;
+    });
+
+    res.json({ project, attendance, date: date || null });
+  } catch (err) {
+    console.error('GET attendance by id error:', err);
+    res.status(500).json({ msg: 'Failed to load attendance: ' + err.message });
+  }
+});
+
+router.put('/attendance', auth, async (req, res) => {
+  try {
+    const { projectId, date, entries } = req.body;
+    if (!projectId) return res.status(400).json({ msg: 'projectId is required' });
+    if (!date || !Array.isArray(entries)) {
+      return res.status(400).json({ msg: 'Date and attendance entries are required' });
+    }
+
+    const project = await Project.findById(projectId);
+    if (!project) return res.status(404).json({ msg: `Project not found: ${projectId}` });
+    if (project.faculty?.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ msg: 'You do not have access to this project attendance' });
+    }
+
+    project.attendance = Array.isArray(project.attendance) ? project.attendance : [];
+
+    for (const entry of entries) {
+      const studentId = entry.studentId;
+      const status = entry.status || 'absent';
+      const existingIndex = project.attendance.findIndex(item => item.student?.toString() === studentId && item.date === date);
+
+      if (existingIndex >= 0) {
+        project.attendance[existingIndex].status = status;
+        project.attendance[existingIndex].markedAt = new Date();
+        project.attendance[existingIndex].markedBy = req.user.id;
+      } else {
+        project.attendance.push({ student: studentId, date, status, markedAt: new Date(), markedBy: req.user.id });
+      }
+    }
+
+    await project.save();
+    res.json({ msg: 'Attendance saved successfully' });
+  } catch (err) {
+    console.error('PUT attendance error:', err);
+    res.status(500).json({ msg: 'Failed to save attendance: ' + err.message });
+  }
+});
+
+router.put('/attendance/:projectId', auth, async (req, res) => {
+  try {
+    const { date, entries } = req.body;
+    if (!date || !Array.isArray(entries)) {
+      return res.status(400).json({ msg: 'Date and attendance entries are required' });
+    }
+
+    const project = await Project.findById(req.params.projectId);
+    if (!project) return res.status(404).json({ msg: `Project not found: ${req.params.projectId}` });
+    if (project.faculty?.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ msg: 'You do not have access to this project attendance' });
+    }
+
+    project.attendance = Array.isArray(project.attendance) ? project.attendance : [];
+
+    for (const entry of entries) {
+      const studentId = entry.studentId;
+      const status = entry.status || 'absent';
+      const existingIndex = project.attendance.findIndex(item => item.student?.toString() === studentId && item.date === date);
+
+      if (existingIndex >= 0) {
+        project.attendance[existingIndex].status = status;
+        project.attendance[existingIndex].markedAt = new Date();
+        project.attendance[existingIndex].markedBy = req.user.id;
+      } else {
+        project.attendance.push({ student: studentId, date, status, markedAt: new Date(), markedBy: req.user.id });
+      }
+    }
+
+    await project.save();
+    res.json({ msg: 'Attendance saved successfully' });
+  } catch (err) {
+    console.error('PUT attendance by id error:', err);
+    res.status(500).json({ msg: 'Failed to save attendance: ' + err.message });
+  }
+});
+
 // Select and finalize definition
 router.put('/project/:id/select-definition', auth, async (req, res) => {
   try {

@@ -23,6 +23,13 @@ const projectSchema = new mongoose.Schema({
   backend:            { type: String },
   faculty:            { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   students:           [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  attendance:         [{
+    student: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    date:    { type: String },
+    status:  { type: String, enum: ['present','absent','late','excused'], default: 'absent' },
+    markedAt:{ type: Date, default: Date.now },
+    markedBy:{ type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  }],
   status:             { type: String, enum: ['active','completed'], default: 'active' },
 }, { timestamps: true });
 
